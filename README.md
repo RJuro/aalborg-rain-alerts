@@ -40,7 +40,7 @@ SUBSCRIPTIONS_ENABLED = false
 
 Change the flag to `true` after the Gmail setup above.
 
-The repository is private. To allow anyone to view and subscribe, set the deployed app's sharing setting to **This app is public and searchable**. This does not require making your source repository public. See [deployment](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/deploy), [secrets](https://docs.streamlit.io/deploy/concepts/secrets), and [sharing](https://docs.streamlit.io/deploy/streamlit-community-cloud/share-your-app).
+The repository is public. Streamlit Cloud apps deployed from public repositories are public by default, so anyone can view and subscribe once Gmail is connected and signups are enabled. See [deployment](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/deploy), [secrets](https://docs.streamlit.io/deploy/concepts/secrets), and [sharing](https://docs.streamlit.io/deploy/streamlit-community-cloud/share-your-app).
 
 The email links go directly to n8n, so they work regardless of the Streamlit app's final URL.
 

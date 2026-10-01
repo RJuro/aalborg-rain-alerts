@@ -1,0 +1,470 @@
+{
+  "name": "Aalborg · Subscribe and confirm email",
+  "nodes": [
+    {
+      "id": "da4e3bc7-0b5c-4859-950b-3988cf21d415",
+      "name": "Signup API",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "aalborg-rain-subscribe-v1",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "b2ff31d8-2bbd-47ff-b4db-48cdfd867942"
+    },
+    {
+      "id": "3c3f3c38-ca9c-4ae6-a218-10f8425b601c",
+      "name": "Validate signup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const body = $input.first().json.body ?? {};\nconst email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';\nconst tokenOK = value => typeof value === 'string' && /^[A-Za-z0-9_-]{43}$/.test(value);\nconst valid = email.length <= 254 && /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/i.test(email) && body.consent === true && tokenOK(body.confirm_token) && tokenOK(body.unsubscribe_token) && body.confirm_token !== body.unsubscribe_token;\nreturn [{json:{valid,email,confirm_token:body.confirm_token,unsubscribe_token:body.unsubscribe_token},pairedItem:{item:0}}];"
+      }
+    },
+    {
+      "id": "8dd95fb3-c4c7-4cb4-97a1-f89f758f3068",
+      "name": "Valid email and consent?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        500,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3bc4cce4-a44c-44df-9655-97fd528405dd",
+      "name": "Find subscriber",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1000,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "hrGw9PmDUB003kIY",
+          "cachedResultName": "Aalborg rain subscribers"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "email",
+              "condition": "eq",
+              "keyValue": "={{ $json.email }}"
+            }
+          ]
+        },
+        "returnAll": false,
+        "limit": 1
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "3250a6ab-f28c-4fc7-9e84-ad0d105d566d",
+      "name": "Choose confirmation action",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1250,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const request = $('Validate signup').first().json;\nconst existing = $input.first().json;\nconst now = Date.now();\nconst recentlyRequested = existing.confirmation_requested_at && now - Date.parse(existing.confirmation_requested_at) < 15 * 60000;\nconst send_confirmation = !(existing.active && existing.confirmed) && !recentlyRequested;\nreturn [{json:{...request,send_confirmation,confirmation_requested_at:new Date(now).toISOString(),subscribed_at:existing.subscribed_at ?? new Date(now).toISOString()},pairedItem:{item:0}}];"
+      }
+    },
+    {
+      "id": "8ac4f025-29c7-4c88-839f-75c4a88667be",
+      "name": "Send confirmation?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1500,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.send_confirmation }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "0a6eb2d2-0e00-4d2a-8e16-b74813744032",
+      "name": "Save pending subscription",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1750,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "hrGw9PmDUB003kIY",
+          "cachedResultName": "Aalborg rain subscribers"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "email",
+              "condition": "eq",
+              "keyValue": "={{ $json.email }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "email": "={{ $json.email }}",
+            "active": false,
+            "confirmed": false,
+            "confirm_token": "={{ $json.confirm_token }}",
+            "unsubscribe_token": "={{ $json.unsubscribe_token }}",
+            "confirmation_requested_at": "={{ $json.confirmation_requested_at }}",
+            "subscribed_at": "={{ $json.subscribed_at }}"
+          },
+          "schema": [
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "active",
+              "displayName": "active",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "confirmed",
+              "displayName": "confirmed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "confirm_token",
+              "displayName": "confirm_token",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "unsubscribe_token",
+              "displayName": "unsubscribe_token",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "confirmation_requested_at",
+              "displayName": "confirmation_requested_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "date",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "subscribed_at",
+              "displayName": "subscribed_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "date",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "last_alert_at",
+              "displayName": "last_alert_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "date",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "e119993c-2847-4dd7-ab1f-b7a5fd610157",
+      "name": "Send confirmation email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        2000,
+        300
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.email }}",
+        "subject": "Confirm your Aalborg rain alerts",
+        "emailType": "text",
+        "message": "={{ 'You asked to receive Aalborg rain alerts.\\n\\nConfirm your email using the button on this page (link expires in 24 hours):\\nhttps://n8n.automate.business.aau.dk/webhook/aalborg-rain-manage-v1?action=confirm&token=' + $json.confirm_token + '\\n\\nWe check hourly and send an alert when an hour in the next six hours has at least a 60% chance of precipitation and at least 0.2 mm of rain/shower forecast. Maximum one alert per six hours.\\n\\nIf you did not request this, ignore this email.\\nWeather data: Open-Meteo.' }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Aalborg Rain"
+        }
+      },
+      "webhookId": "0c6981f0-5c0d-4ae5-9fdf-83026a787d89"
+    },
+    {
+      "id": "74cd36af-dc21-4ef7-8db4-8a67f74dae98",
+      "name": "Return signup receipt",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2250,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": {
+          "ok": true,
+          "message": "If confirmation is needed, a link will arrive in your inbox. Check spam too. Please allow 15 minutes before requesting another link."
+        },
+        "options": {
+          "responseCode": 202
+        }
+      }
+    },
+    {
+      "id": "085e3689-4cf8-448f-9c9a-e6c37ddb5d14",
+      "name": "Reject invalid signup",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        750,
+        600
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": {
+          "ok": false,
+          "message": "Enter a valid email address and accept the email subscription."
+        },
+        "options": {
+          "responseCode": 400
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Signup API": {
+      "main": [
+        [
+          {
+            "node": "Validate signup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate signup": {
+      "main": [
+        [
+          {
+            "node": "Valid email and consent?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid email and consent?": {
+      "main": [
+        [
+          {
+            "node": "Find subscriber",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reject invalid signup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find subscriber": {
+      "main": [
+        [
+          {
+            "node": "Choose confirmation action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Choose confirmation action": {
+      "main": [
+        [
+          {
+            "node": "Send confirmation?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send confirmation?": {
+      "main": [
+        [
+          {
+            "node": "Save pending subscription",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return signup receipt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save pending subscription": {
+      "main": [
+        [
+          {
+            "node": "Send confirmation email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send confirmation email": {
+      "main": [
+        [
+          {
+            "node": "Return signup receipt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "nodeGroups": [
+    {
+      "id": "ef93741d-23a0-49e6-8da8-015b6bf5ad98",
+      "name": "Validate request",
+      "nodeNames": [
+        "Validate signup",
+        "Valid email and consent?"
+      ],
+      "description": "Check the email address, consent and confirmation tokens."
+    },
+    {
+      "id": "3177ecf2-4d8b-4d7e-9b68-35844db5c087",
+      "name": "Prevent duplicate mail",
+      "nodeNames": [
+        "Find subscriber",
+        "Choose confirmation action",
+        "Send confirmation?"
+      ],
+      "description": "Existing subscribers keep their subscription; confirmation mail is limited to once per 15 minutes."
+    },
+    {
+      "id": "35a8b94e-4f1e-44eb-a9b5-2cfc7089e65b",
+      "name": "Save and email",
+      "nodeNames": [
+        "Save pending subscription",
+        "Send confirmation email"
+      ],
+      "description": "Store a pending signup and send a confirmation link. Connect the Gmail credential here before publishing."
+    }
+  ],
+  "pinData": {},
+  "active": false
+}

@@ -1,0 +1,153 @@
+{
+  "name": "Aalborg · Weather API",
+  "nodes": [
+    {
+      "id": "4363bab3-a7cd-4cdb-8976-0919aca99214",
+      "name": "Weather API",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "aalborg-weather-v1",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "7a0576df-cb52-4011-8b9b-dbf7f29bd28f"
+    },
+    {
+      "id": "61f56a31-11e6-44d1-b275-af2dde52b362",
+      "name": "Fetch Aalborg forecast",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        300,
+        300
+      ],
+      "parameters": {
+        "url": "https://api.open-meteo.com/v1/forecast",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "latitude",
+              "value": "57.048"
+            },
+            {
+              "name": "longitude",
+              "value": "9.919"
+            },
+            {
+              "name": "hourly",
+              "value": "precipitation_probability,rain,showers,temperature_2m"
+            },
+            {
+              "name": "current",
+              "value": "temperature_2m,wind_speed_10m"
+            },
+            {
+              "name": "forecast_hours",
+              "value": "26"
+            },
+            {
+              "name": "timeformat",
+              "value": "unixtime"
+            },
+            {
+              "name": "timezone",
+              "value": "Europe/Copenhagen"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3
+    },
+    {
+      "id": "94a6ddc0-535f-430f-8762-20e5ffa5cf92",
+      "name": "Apply rain alert rule",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        600,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const source = $input.first().json;\nconst hourly = source.hourly;\nconst nowMs = Date.now();\nconst horizonMs = nowMs + 6 * 3600000;\nconst fields = ['time', 'precipitation_probability', 'rain', 'showers', 'temperature_2m'];\nif (!hourly || fields.some(key => !Array.isArray(hourly[key]))) throw new Error('Incomplete forecast from Open-Meteo');\nconst hours = hourly.time.map((time, i) => {\n  const endMs = Number(time) * 1000;\n  const probability = hourly.precipitation_probability[i];\n  const rain = hourly.rain[i];\n  const showers = hourly.showers[i];\n  return {\n    start: new Date(endMs - 3600000).toISOString(),\n    end: new Date(endMs).toISOString(),\n    probability: typeof probability === 'number' ? probability : null,\n    rain_mm: typeof rain === 'number' && typeof showers === 'number' ? Number((rain + showers).toFixed(2)) : null,\n    temperature_c: hourly.temperature_2m[i] ?? null\n  };\n}).filter(h => Date.parse(h.end) > nowMs).slice(0, 24);\nconst window = hours.filter(h => Date.parse(h.start) < horizonMs);\nif (!window.length || window.some(h => h.probability === null || h.rain_mm === null)) throw new Error('Forecast unavailable in the alert window');\nconst wet = window.filter(h => h.probability >= 60 && h.rain_mm >= 0.2);\nreturn [{ json: {\n  city: 'Aalborg', latitude: 57.048, longitude: 9.919, timezone: 'Europe/Copenhagen',\n  fetched_at: new Date(nowMs).toISOString(), provider: 'Open-Meteo',\n  threshold_percent: 60, minimum_rain_mm: 0.2, horizon_hours: 6, cooldown_hours: 6,\n  rain_likely: wet.length > 0, first_rain_start: wet[0]?.start ?? null,\n  first_rain_end: wet[0]?.end ?? null,\n  max_hourly_probability: Math.max(...window.map(h => h.probability)),\n  expected_rain_mm: Number(window.reduce((sum, h) => sum + h.rain_mm, 0).toFixed(2)),\n  current_temperature_c: source.current?.temperature_2m ?? null,\n  current_wind_kmh: source.current?.wind_speed_10m ?? null,\n  hours\n}, pairedItem: {item: 0} }];"
+      }
+    },
+    {
+      "id": "f8d1e96a-9200-4201-a942-0f7cc51c326f",
+      "name": "Return weather",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        900,
+        300
+      ],
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Cache-Control",
+                "value": "public, max-age=120"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Weather API": {
+      "main": [
+        [
+          {
+            "node": "Fetch Aalborg forecast",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Aalborg forecast": {
+      "main": [
+        [
+          {
+            "node": "Apply rain alert rule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply rain alert rule": {
+      "main": [
+        [
+          {
+            "node": "Return weather",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "active": false
+}

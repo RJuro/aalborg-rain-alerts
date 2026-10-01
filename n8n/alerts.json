@@ -1,0 +1,438 @@
+{
+  "name": "Aalborg · Hourly rain email alerts",
+  "nodes": [
+    {
+      "id": "5fc1b3b7-c164-497d-bd5d-12568ff894be",
+      "name": "Check every hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1,
+              "triggerAtMinute": 5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "fafa5072-e241-43b8-95cd-fff5ae48c8da",
+      "name": "Get shared rain prediction",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        290,
+        300
+      ],
+      "parameters": {
+        "url": "https://n8n.automate.business.aau.dk/webhook/aalborg-weather-v1",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3
+    },
+    {
+      "id": "2ba7562a-cfa6-4a90-8c55-be905d4c774c",
+      "name": "Rain likely in next six hours",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        580,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.rain_likely }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "e518b09b-e83a-480b-a8a9-7a9185634f29",
+      "name": "Get confirmed active subscribers",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        870,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "hrGw9PmDUB003kIY",
+          "cachedResultName": "Aalborg rain subscribers"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "active",
+              "condition": "isTrue"
+            },
+            {
+              "keyName": "confirmed",
+              "condition": "isTrue"
+            }
+          ]
+        },
+        "returnAll": true
+      }
+    },
+    {
+      "id": "2d463803-8081-4b9e-a055-7814c42a2723",
+      "name": "Wait six hours between alerts",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        1160,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ !$json.last_alert_at || (Number.isFinite(Date.parse($json.last_alert_at)) && $now.toMillis() - Date.parse($json.last_alert_at) >= $('Get shared rain prediction').first().json.cooldown_hours * 3600000) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "acf28677-f052-4c23-9131-decc8a842799",
+      "name": "Prepare each rain alert",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1450,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "alert_at",
+              "name": "alert_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "probability",
+              "name": "probability",
+              "value": "={{ $('Get shared rain prediction').first().json.max_hourly_probability }}",
+              "type": "number"
+            },
+            {
+              "id": "rain_time",
+              "name": "rain_time",
+              "value": "={{ DateTime.fromISO($('Get shared rain prediction').first().json.first_rain_start).setZone('Europe/Copenhagen').toFormat('ccc d LLL, HH:mm') }}",
+              "type": "string"
+            },
+            {
+              "id": "unsubscribe_url",
+              "name": "unsubscribe_url",
+              "value": "={{ 'https://n8n.automate.business.aau.dk/webhook/aalborg-rain-manage-v1?action=unsubscribe&token=' + $json.unsubscribe_token }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "af4359d0-4773-4ad7-a7f7-1ba50e2af499",
+      "name": "Send Aalborg rain alert",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1740,
+        300
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.email }}",
+        "subject": "Rain looks likely in Aalborg — take an umbrella",
+        "emailType": "text",
+        "message": "={{ 'Rain looks likely in Aalborg in the next six hours.\\n\\nFirst qualifying rain interval starts: ' + $json.rain_time + ' (Aalborg time).\\nHighest hourly precipitation chance: ' + $json.probability + '%.\\n\\nThe forecast meets our 60% probability and 0.2 mm rain/shower rule. Forecasts can change; this is a heads-up, not a guarantee.\\nWe check hourly, with at least six hours between alerts.\\n\\nUnsubscribe:\\n' + $json.unsubscribe_url + '\\n\\nForecast data: Open-Meteo (https://open-meteo.com/).' }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Aalborg Rain"
+        }
+      },
+      "webhookId": "fc51f3d7-f4a4-4c04-a8ba-19a2a9cbad01"
+    },
+    {
+      "id": "6ea5cfbc-4062-4914-a32a-af868adc63f3",
+      "name": "Record successful delivery",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2030,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "hrGw9PmDUB003kIY",
+          "cachedResultName": "Aalborg rain subscribers"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Prepare each rain alert').item.json.id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "last_alert_at": "={{ $('Prepare each rain alert').item.json.alert_at }}"
+          },
+          "schema": [
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "active",
+              "displayName": "active",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "confirmed",
+              "displayName": "confirmed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "confirm_token",
+              "displayName": "confirm_token",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "unsubscribe_token",
+              "displayName": "unsubscribe_token",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "confirmation_requested_at",
+              "displayName": "confirmation_requested_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "date",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "subscribed_at",
+              "displayName": "subscribed_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "date",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "last_alert_at",
+              "displayName": "last_alert_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "date",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Check every hour": {
+      "main": [
+        [
+          {
+            "node": "Get shared rain prediction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get shared rain prediction": {
+      "main": [
+        [
+          {
+            "node": "Rain likely in next six hours",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rain likely in next six hours": {
+      "main": [
+        [
+          {
+            "node": "Get confirmed active subscribers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get confirmed active subscribers": {
+      "main": [
+        [
+          {
+            "node": "Wait six hours between alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait six hours between alerts": {
+      "main": [
+        [
+          {
+            "node": "Prepare each rain alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare each rain alert": {
+      "main": [
+        [
+          {
+            "node": "Send Aalborg rain alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Aalborg rain alert": {
+      "main": [
+        [
+          {
+            "node": "Record successful delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true,
+    "timezone": "Europe/Copenhagen",
+    "executionTimeout": 300
+  },
+  "nodeGroups": [
+    {
+      "id": "07f75823-538e-4dcd-91af-bab1206bc96f",
+      "name": "Check forecast",
+      "nodeNames": [
+        "Get shared rain prediction",
+        "Rain likely in next six hours"
+      ],
+      "description": "Use the same forecast and rule as the Streamlit page. Dry forecasts stop here."
+    },
+    {
+      "id": "549ede19-2c92-4cf0-bea0-9e0228be7a31",
+      "name": "Choose subscribers",
+      "nodeNames": [
+        "Get confirmed active subscribers",
+        "Wait six hours between alerts"
+      ],
+      "description": "Only confirmed, active subscribers whose last alert was at least six hours ago."
+    },
+    {
+      "id": "4b38f64e-f35d-47d5-9e7d-baceb211a4bd",
+      "name": "Send and record",
+      "nodeNames": [
+        "Prepare each rain alert",
+        "Send Aalborg rain alert",
+        "Record successful delivery"
+      ],
+      "description": "Send an individual Gmail alert, then record delivery. Connect Gmail before publishing."
+    }
+  ],
+  "pinData": {},
+  "active": false
+}

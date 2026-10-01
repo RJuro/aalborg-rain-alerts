@@ -1,0 +1,495 @@
+{
+  "name": "Aalborg · Confirm and unsubscribe",
+  "nodes": [
+    {
+      "id": "46c3f43f-777b-46a1-83e5-20fcc2dfc620",
+      "name": "Open email link",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "aalborg-rain-manage-v1",
+        "responseMode": "responseNode",
+        "options": {
+          "ignoreBots": true
+        }
+      },
+      "webhookId": "2361f94a-cbc8-49eb-bb36-aec90c20d181"
+    },
+    {
+      "id": "3ed7a8d1-026b-4d20-b18e-602f63dc6d3c",
+      "name": "Build confirmation page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        200
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const query = $input.first().json.query ?? {};\nconst valid = ['confirm','unsubscribe'].includes(query.action) && /^[A-Za-z0-9_-]{43}$/.test(query.token ?? '');\nconst action = valid ? query.action : '';\nconst title = action === 'confirm' ? 'One click, then you are covered.' : action === 'unsubscribe' ? 'Leave the rain alerts?' : 'This link is incomplete.';\nconst button = action === 'confirm' ? 'Confirm my subscription' : 'Unsubscribe';\nconst form = valid ? '<form method=\"post\" action=\"https://n8n.automate.business.aau.dk/webhook/aalborg-rain-manage-v1\" target=\"_top\"><input type=\"hidden\" name=\"action\" value=\"' + action + '\"><input type=\"hidden\" name=\"token\" value=\"' + query.token + '\"><button type=\"submit\">' + button + '</button></form>' : '<p>Open the complete link from your email.</p>';\nconst html = '<!doctype html><html><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Aalborg Rain</title><style>body{background:#f5f2eb;color:#142e41;font:18px system-ui;margin:0;padding:10vh 8vw}main{max-width:620px;margin:auto}small{letter-spacing:.14em}h1{font:52px Georgia;line-height:1.1}button{background:#173f56;color:white;border:0;border-radius:8px;padding:16px 24px;font:inherit;cursor:pointer}p{line-height:1.7}</style><main><small>AALBORG RAIN</small><h1>' + title + '</h1><p>' + (action === 'confirm' ? 'Receive a heads-up when rain looks likely in the next six hours.' : 'You can subscribe again whenever you like.') + '</p>' + form + '</main></html>';\nreturn [{json:{html,status:valid ? 200 : 400},pairedItem:{item:0}}];"
+      }
+    },
+    {
+      "id": "b9dd2a81-1ecc-4974-8676-2985daa342df",
+      "name": "Show confirmation page",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        560,
+        200
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseCode": "={{ $json.status }}",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              },
+              {
+                "name": "Referrer-Policy",
+                "value": "no-referrer"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "d6cd212a-440e-4f05-bb22-c486115c79cc",
+      "name": "Confirm or unsubscribe",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        650
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "aalborg-rain-manage-v1",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "1092a3be-7702-4b1d-853a-ba0196040e79"
+    },
+    {
+      "id": "ef77b628-76c9-434a-ba65-94721be0c60d",
+      "name": "Normalize management request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        650
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const body = $input.first().json.body ?? {};\nconst action = body.action;\nconst token = body.token;\nconst valid = ['confirm','unsubscribe'].includes(action) && typeof token === 'string' && /^[A-Za-z0-9_-]{43}$/.test(token);\nreturn [{json:{valid,action:valid ? action : '',token:valid ? token : '',token_column:action === 'unsubscribe' ? 'unsubscribe_token' : 'confirm_token'},pairedItem:{item:0}}];"
+      }
+    },
+    {
+      "id": "dca7dd06-c9f4-49a7-b6a8-6dec6500b98d",
+      "name": "Find matching token",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        560,
+        650
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "hrGw9PmDUB003kIY",
+          "cachedResultName": "Aalborg rain subscribers"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "={{ $json.token_column }}",
+              "condition": "eq",
+              "keyValue": "={{ $json.token }}"
+            }
+          ]
+        },
+        "returnAll": false,
+        "limit": 1
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "36f15b64-875a-46f4-ab56-3b68ccde9ad5",
+      "name": "Check token and expiry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        840,
+        650
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const request = $('Normalize management request').first().json;\nconst row = $input.first().json;\nconst expired = request.action === 'confirm' && (!row.confirmation_requested_at || Date.now() - Date.parse(row.confirmation_requested_at) > 24*3600000);\nconst valid = request.valid && Number.isInteger(row.id) && (!expired || (row.active === true && row.confirmed === true));\nreturn [{json:{valid,id:row.id ?? -1,active:request.action === 'confirm',confirmed:request.action === 'confirm' ? true : row.confirmed === true,action:request.action},pairedItem:{item:0}}];"
+      }
+    },
+    {
+      "id": "c5124583-9eeb-4504-9b84-411bacccd5fb",
+      "name": "Valid subscription link?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1120,
+        650
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "15429ece-7349-46b2-b37c-f8facf918b81",
+      "name": "Update subscription status",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1400,
+        650
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "hrGw9PmDUB003kIY",
+          "cachedResultName": "Aalborg rain subscribers"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "active": "={{ $json.active }}",
+            "confirmed": "={{ $json.confirmed }}"
+          },
+          "schema": [
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "active",
+              "displayName": "active",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "confirmed",
+              "displayName": "confirmed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "confirm_token",
+              "displayName": "confirm_token",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "unsubscribe_token",
+              "displayName": "unsubscribe_token",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "confirmation_requested_at",
+              "displayName": "confirmation_requested_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "date",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "subscribed_at",
+              "displayName": "subscribed_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "date",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "last_alert_at",
+              "displayName": "last_alert_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "date",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "9475bb8d-ef19-46f9-a440-45b56ad593b7",
+      "name": "Show subscription result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1680,
+        650
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ '<html><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Aalborg Rain</title><body style=\"background:#f5f2eb;color:#142e41;font:20px system-ui;padding:10vh 8vw\"><h1 style=\"font-family:Georgia\">' + ($('Check token and expiry').item.json.action === 'confirm' ? 'You are subscribed.' : 'You are unsubscribed.') + '</h1><p>' + ($('Check token and expiry').item.json.action === 'confirm' ? 'Look out for Aalborg rain alerts in your inbox.' : 'You will no longer receive Aalborg rain alerts.') + '</p></body></html>' }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              },
+              {
+                "name": "Referrer-Policy",
+                "value": "no-referrer"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "62a2327f-75d6-4f5b-b05a-c4c2a4106e4f",
+      "name": "Show invalid or expired link",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1500,
+        900
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "<html><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><body style=\"font:20px system-ui;padding:10vh 8vw;background:#f5f2eb;color:#142e41\"><h1>This link is invalid or expired.</h1><p>Please request a new confirmation link from the signup page.</p></body></html>",
+        "options": {
+          "responseCode": 400,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              },
+              {
+                "name": "Referrer-Policy",
+                "value": "no-referrer"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Open email link": {
+      "main": [
+        [
+          {
+            "node": "Build confirmation page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build confirmation page": {
+      "main": [
+        [
+          {
+            "node": "Show confirmation page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirm or unsubscribe": {
+      "main": [
+        [
+          {
+            "node": "Normalize management request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize management request": {
+      "main": [
+        [
+          {
+            "node": "Find matching token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find matching token": {
+      "main": [
+        [
+          {
+            "node": "Check token and expiry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check token and expiry": {
+      "main": [
+        [
+          {
+            "node": "Valid subscription link?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid subscription link?": {
+      "main": [
+        [
+          {
+            "node": "Update subscription status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Show invalid or expired link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update subscription status": {
+      "main": [
+        [
+          {
+            "node": "Show subscription result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "nodeGroups": [
+    {
+      "id": "2b5461bc-fa54-4f39-ac93-4a0c910fbee8",
+      "name": "Confirm mailbox ownership",
+      "nodeNames": [
+        "Normalize management request",
+        "Find matching token",
+        "Check token and expiry",
+        "Valid subscription link?"
+      ],
+      "description": "Find a subscriber by secret token and enforce the 24-hour confirmation expiry."
+    },
+    {
+      "id": "daeafdfe-c90f-4f73-9582-ff3a8521664d",
+      "name": "Email link page",
+      "nodeNames": [
+        "Build confirmation page",
+        "Show confirmation page"
+      ],
+      "description": "Show a button; opening a link alone does not change a subscription."
+    },
+    {
+      "id": "6b60d426-e6fb-448f-bafe-a4e7fa29df9e",
+      "name": "Apply subscription choice",
+      "nodeNames": [
+        "Update subscription status",
+        "Show subscription result"
+      ],
+      "description": "Persist confirmation or opt-out and show the result."
+    }
+  ],
+  "pinData": {},
+  "active": false
+}

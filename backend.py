@@ -80,4 +80,3 @@ def subscribe(email, consent, base_url=DEFAULT_BASE_URL):
     if data.get("ok") is not True:
         raise BackendError("Your signup could not be completed. Please try again shortly.")
     return data.get("message", "Check your inbox for a confirmation link.")
-

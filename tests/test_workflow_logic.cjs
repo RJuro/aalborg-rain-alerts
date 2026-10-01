@@ -53,4 +53,3 @@ assert.equal(run('manage-decision.js',{}, {'Normalize management request':manage
 const unsub=run('manage-decision.js',{id:1,active:true,confirmed:true},{'Normalize management request':{valid:true,action:'unsubscribe'}});
 assert.equal(unsub.valid,true);assert.equal(unsub.active,false);assert.equal(unsub.confirmed,true);
 console.log('Workflow logic: 21 assertions passed (thresholds, timing, validation, duplicate prevention, confirmation and opt-out).');
-

@@ -134,4 +134,3 @@ Verified during setup:
 Actual Gmail delivery and scheduled email execution are not verified until Gmail is connected. The n8n fixture-test tool failed to start tests on this instance; local logic tests and live weather/management requests were used instead.
 
 The `n8n/*.sdk.ts` files describe the workflows with n8n's Workflow SDK. `n8n/*.json` are n8n editor import snapshots for reference or recovery on this instance; they depend on the existing subscriber table and need a real Gmail credential.
-
